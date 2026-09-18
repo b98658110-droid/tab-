@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Dev Clicker</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* ---------- Палитра «редактор кода» ---------- */
+:root {
+  --bg: #0d1117;
+  --panel: #151b26;
+  --panel-2: #1b2331;
+  --line: #263044;
+  --text: #d5dbe6;
+  --muted: #7d8aa3;
+  --green: #39ff88;
+  --violet: #b07cff;
+  --blue: #4fc3ff;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Courier New", monospace;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); overflow: hidden; }
+body { display: flex; flex-direction: column; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+
+/* ---------- Шапка: ранг, баланс, доход ---------- */
+header { padding: 14px 16px 12px; text-align: center; border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #121a29, var(--bg)); }
+.rank { display: inline-block; font-size: 12px; color: var(--violet); border: 1px solid #3b2a63; background: #1a1230;
+  padding: 3px 10px; border-radius: 999px; }
+.balance { margin: 8px 0 2px; font-size: 38px; font-weight: 700; color: var(--green); text-shadow: 0 0 18px rgba(57,255,136,.45); }
+.balance small { font-size: 14px; color: var(--muted); font-weight: 400; text-shadow: none; }
+.pps { font-size: 13px; color: var(--blue); }
+
+/* ---------- Экраны ---------- */
+main { flex: 1; position: relative; overflow: hidden; }
+.screen { position: absolute; inset: 0; display: none; overflow-y: auto; padding: 16px; }
+.screen.active { display: flex; }
+#screen-code { flex-direction: column; align-items: center; justify-content: center; gap: 22px; }
+#screen-shop { flex-direction: column; gap: 10px; }
+
+/* ---------- Большая кнопка ---------- */
+.tap-btn { position: relative; width: min(64vw, 260px); aspect-ratio: 1; border-radius: 50%; border: 2px solid var(--green);
+  background: radial-gradient(circle at 35% 30%, #22304a, #0f1522 70%); color: var(--green); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  box-shadow: 0 0 0 8px rgba(57,255,136,.06), 0 0 40px rgba(57,255,136,.35), inset 0 0 30px rgba(79,195,255,.15);
+  transition: transform .08s ease, box-shadow .08s ease; }
+.tap-btn.pressed { transform: scale(.93); box-shadow: 0 0 0 4px rgba(57,255,136,.1), 0 0 22px rgba(57,255,136,.5), inset 0 0 30px rgba(79,195,255,.25); }
+.tap-btn .laptop { font-size: min(22vw, 92px); line-height: 1; pointer-events: none; }
+.tap-btn .tag { font-size: 18px; color: var(--violet); pointer-events: none; }
+.hint { font-size: 13px; color: var(--muted); }
+.hint b { color: var(--green); font-weight: 600; }
+
+/* Улетающий текст «+1 LoC» */
+.float { position: fixed; z-index: 50; pointer-events: none; font-weight: 700; font-size: 20px; color: var(--green);
+  text-shadow: 0 0 10px rgba(57,255,136,.8); transform: translate(-50%, -50%); animation: floatUp .9s ease-out forwards; }
+@keyframes floatUp { to { transform: translate(-50%, -140px); opacity: 0; } }
+
+/* ---------- Апгрейды ---------- */
+.seg { display: flex; gap: 6px; background: var(--panel); padding: 4px; border-radius: 12px; border: 1px solid var(--line); position: sticky; top: -16px; z-index: 5; }
+.seg button { flex: 1; font: inherit; font-size: 13px; padding: 9px 4px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; }
+.seg button.active { background: var(--panel-2); color: var(--blue); box-shadow: inset 0 0 0 1px #2c4a63; }
+
+.card { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center; padding: 12px;
+  background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--violet); border-radius: 12px; }
+.card .ico { font-size: 30px; text-align: center; }
+.card b { font-size: 14px; }
+.card p { margin: 3px 0 5px; font-size: 12px; color: var(--muted); line-height: 1.35; }
+.card .gain { font-size: 12px; color: var(--blue); }
+.card .lvl { font-size: 11px; color: var(--violet); margin-left: 6px; }
+.buy { font: inherit; font-size: 13px; font-weight: 700; min-width: 84px; padding: 10px 8px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--green); background: rgba(57,255,136,.1); color: var(--green); }
+.buy:active { transform: scale(.95); }
+.card.locked .buy { border-color: var(--line); background: var(--panel-2); color: var(--muted); }
+.card.shake { animation: shake .3s; }
+@keyframes shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+/* ---------- Нижнее меню ---------- */
+nav { display: flex; border-top: 1px solid var(--line); background: var(--panel); padding-bottom: env(safe-area-inset-bottom); }
+nav button { flex: 1; font: inherit; font-size: 12px; padding: 10px 0 12px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+nav button span { display: block; font-size: 22px; margin-bottom: 2px; }
+nav button.active { color: var(--green); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="rank" id="rank">Школьник</div>
+  <div class="balance"><span id="balance">0</span> <small>LoC</small></div>
+  <div class="pps"><span id="pps">0</span> код/сек</div>
+</header>
+
+<main>
+  <!-- Вкладка «Кодинг» -->
+  <section class="screen active" id="screen-code">
+    <button class="tap-btn" id="tap" aria-label="Писать код">
+      <div class="laptop">💻</div>
+      <div class="tag">&lt;/&gt;</div>
+    </button>
+    <div class="hint">Сила клика: <b id="power">+1</b> LoC</div>
+  </section>
+
+  <!-- Вкладка «Апгрейды» -->
+  <section class="screen" id="screen-shop">
+    <div class="seg" id="seg">
+      <button data-cat="skills" class="active">Навыки</button>
+      <button data-cat="hardware">Железо</button>
+      <button data-cat="projects">Проекты</button>
+    </div>
+    <div id="cards" style="display:flex;flex-direction:column;gap:10px"></div>
+  </section>
+</main>
+
+<nav>
+  <button class="active" data-tab="code"><span>⌨️</span>Кодинг</button>
+  <button data-tab="shop"><span>🛠️</span>Апгрейды</button>
+</nav>
+
+<script>
+/* ============================================================
+   Dev Clicker — Telegram Mini App
+   ============================================================ */
+
+/* ---------- Telegram SDK ---------- */
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  try { tg.setHeaderColor('#0d1117'); tg.setBackgroundColor('#0d1117'); } catch (e) {}
+}
+/** Вибрация: работает только внутри Telegram, вне его молча ничего не делает */
+const haptic = {
+  tap()   { try { tg.HapticFeedback.impactOccurred('light'); } catch (e) {} },
+  buy()   { try { tg.HapticFeedback.notificationOccurred('success'); } catch (e) {} },
+  error() { try { tg.HapticFeedback.notificationOccurred('error'); } catch (e) {} }
+};
+
+/* ---------- Данные карт ----------
+   tap — прирост силы клика за уровень, pps — прирост дохода в секунду за уровень */
+const CARDS = [
+  // Навыки: клик + пассивный доход
+  { id: 'python', cat: 'skills', ico: '🐍', name: 'Изучить Python',   desc: 'Скрипты вместо рутины.',            base: 50,     tap: 1,  pps: 1 },
+  { id: 'git',    cat: 'skills', ico: '🌿', name: 'Освоить Git',      desc: 'Ветки, коммиты и меньше паники.',   base: 250,    tap: 2,  pps: 2 },
+  { id: 'react',  cat: 'skills', ico: '⚛️', name: 'Освоить React',    desc: 'Компоненты собираются сами.',       base: 1200,   tap: 5,  pps: 6 },
+  { id: 'gemini', cat: 'skills', ico: '✨', name: 'Внедрить Gemini AI', desc: 'ИИ-напарник пишет код с тобой.',  base: 8000,   tap: 20, pps: 30 },
+  // Железо: пассивный доход
+  { id: 'monitor',  cat: 'hardware', ico: '🖥️', name: 'Второй монитор',        desc: 'Код слева, документация справа.', base: 100,   tap: 0, pps: 2 },
+  { id: 'keyboard', cat: 'hardware', ico: '⌨️', name: 'Механическая клавиатура', desc: 'Каждый клик — как музыка.',     base: 500,   tap: 0, pps: 8 },
+  { id: 'pc',       cat: 'hardware', ico: '🧠', name: 'Мощный ПК',             desc: 'Сборка за секунды.',              base: 2500,  tap: 0, pps: 30 },
+  { id: 'cluster',  cat: 'hardware', ico: '🗄️', name: 'Серверный кластер',     desc: 'Код пишется даже ночью.',         base: 20000, tap: 0, pps: 250 },
+  // Проекты: самый большой пассивный доход
+  { id: 'bot',     cat: 'projects', ico: '🤖', name: 'Telegram-бот',  desc: 'Тысячи пользователей в чате.',    base: 1500,    tap: 0, pps: 40 },
+  { id: 'web',     cat: 'projects', ico: '🌐', name: 'Веб-сервис',    desc: 'Подписки и стабильный трафик.',   base: 12000,   tap: 0, pps: 300 },
+  { id: 'startup', cat: 'projects', ico: '🚀', name: 'ИИ-стартап',    desc: 'Инвесторы уже в переписке.',      base: 100000,  tap: 0, pps: 2500 },
+  { id: 'giant',   cat: 'projects', ico: '🏢', name: 'IT-гигант',     desc: 'Твоя компания на бирже.',         base: 1000000, tap: 0, pps: 25000 }
+];
+const COST_GROWTH = 1.5; // +50% к цене за каждый уровень
+
+/* Ранги по всего заработанному коду */
+const RANKS = [
+  [0, 'Школьник'], [1e3, 'Джуниор'], [2e4, 'Мидл'], [3e5, 'Сеньор'],
+  [3e6, 'Тимлид'], [3e7, 'CTO'], [3e8, 'Владелец IT-гиганта']
+];
+
+/* ---------- Состояние и сохранение ---------- */
+const SAVE_KEY = 'devclicker_v1';
+let state = { balance: 0, total: 0, levels: {} };
+let currentCat = 'skills';
+
+/** Загружает прогресс из localStorage */
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (s && typeof s.balance === 'number') {
+      state.balance = s.balance;
+      state.total = s.total || s.balance;
+      state.levels = s.levels || {};
+    }
+  } catch (e) {}
+}
+/** Сохраняет прогресс в localStorage */
+function save() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) {}
+}
+
+/* ---------- Расчёты ---------- */
+const level = id => state.levels[id] || 0;
+/** Цена следующего уровня: base * 1.5^уровень */
+const cost = c => Math.ceil(c.base * Math.pow(COST_GROWTH, level(c.id)));
+/** Сила одного клика: 1 + бонусы навыков */
+const tapPower = () => 1 + CARDS.reduce((s, c) => s + c.tap * level(c.id), 0);
+/** Пассивный доход в секунду */
+const passive = () => CARDS.reduce((s, c) => s + c.pps * level(c.id), 0);
+/** Ранг по всего заработанному коду */
+const rankName = () => RANKS.filter(r => state.total >= r[0]).pop()[1];
+
+/** Короткая запись чисел: 1.2K, 3.4M ... */
+function fmt(n) {
+  n = Math.floor(n);
+  const units = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
+  for (const [v, s] of units) {
+    if (n >= v) return (n / v).toFixed(n / v >= 100 ? 0 : 1).replace(/\.0$/, '') + s;
+  }
+  return String(n);
+}
+
+/* ---------- Интерфейс ---------- */
+const $ = id => document.getElementById(id);
+
+/** Обновляет шапку и подсветку доступности карт */
+function updateHUD() {
+  $('balance').textContent = fmt(state.balance);
+  $('pps').textContent = fmt(passive());
+  $('power').textContent = '+' + fmt(tapPower());
+  $('rank').textContent = rankName();
+  document.querySelectorAll('.card').forEach(el => {
+    const c = CARDS.find(x => x.id === el.dataset.id);
+    el.classList.toggle('locked', state.balance < cost(c));
+  });
+}
+
+/** Отрисовывает карты выбранной категории */
+function renderCards() {
+  $('cards').innerHTML = CARDS.filter(c => c.cat === currentCat).map(c => {
+    const gains = [];
+    if (c.tap) gains.push('+' + c.tap + ' за клик');
+    if (c.pps) gains.push('+' + fmt(c.pps) + ' код/сек');
+    return `<div class="card" data-id="${c.id}">
+      <div class="ico">${c.ico}</div>
+      <div>
+        <b>${c.name}</b><span class="lvl">ур. ${level(c.id)}</span>
+        <p>${c.desc}</p>
+        <div class="gain">${gains.join(' · ')}</div>
+      </div>
+      <button class="buy">${fmt(cost(c))}</button>
+    </div>`;
+  }).join('');
+  updateHUD();
+}
+
+/** Покупка / прокачка карты */
+function buy(id) {
+  const c = CARDS.find(x => x.id === id);
+  const price = cost(c);
+  if (state.balance < price) {
+    haptic.error();
+    const el = document.querySelector(`.card[data-id="${id}"]`);
+    el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
+    return;
+  }
+  state.balance -= price;
+  state.levels[id] = level(id) + 1;
+  haptic.buy();
+  save();
+  renderCards();
+}
+
+/** Анимация «+N LoC», улетающая вверх от точки касания */
+function spawnFloat(x, y, text) {
+  const el = document.createElement('div');
+  el.className = 'float';
+  el.textContent = text;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+/** Клик по большой кнопке */
+function onTap(e) {
+  e.preventDefault();
+  const gain = tapPower();
+  state.balance += gain;
+  state.total += gain;
+  haptic.tap();
+  spawnFloat(e.clientX + (Math.random() * 30 - 15), e.clientY - 20, '+' + fmt(gain) + ' LoC');
+  const btn = $('tap');
+  btn.classList.add('pressed');
+  setTimeout(() => btn.classList.remove('pressed'), 90);
+  updateHUD();
+}
+
+/* ---------- События ---------- */
+$('tap').addEventListener('pointerdown', onTap);            // pointerdown — мгновенный отклик + мультитач
+$('tap').addEventListener('contextmenu', e => e.preventDefault());
+
+$('cards').addEventListener('click', e => {                 // делегирование: клик по кнопке цены
+  const card = e.target.closest('.card');
+  if (card && e.target.closest('.buy')) buy(card.dataset.id);
+});
+
+$('seg').addEventListener('click', e => {                   // переключение категорий
+  const b = e.target.closest('button');
+  if (!b) return;
+  currentCat = b.dataset.cat;
+  document.querySelectorAll('#seg button').forEach(x => x.classList.toggle('active', x === b));
+  renderCards();
+});
+
+document.querySelector('nav').addEventListener('click', e => { // нижнее меню
+  const b = e.target.closest('button');
+  if (!b) return;
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
+  $('screen-code').classList.toggle('active', b.dataset.tab === 'code');
+  $('screen-shop').classList.toggle('active', b.dataset.tab === 'shop');
+  haptic.tap();
+});
+
+/* ---------- Пассивный доход: раз в секунду ---------- */
+setInterval(() => {
+  const income = passive();
+  if (income > 0) {
+    state.balance += income;
+    state.total += income;
+  }
+  updateHUD();
+  save(); // автосохранение каждую секунду
+}, 1000);
+
+/* Сохраняем при сворачивании / закрытии Mini App */
+document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+window.addEventListener('pagehide', save);
+
+/* ---------- Старт ---------- */
+load();
+renderCards();
+</script>
+</body>
+</html>
